@@ -1,0 +1,12 @@
+# coding: utf-8
+!ruby/sym common: &common
+    !ruby/sym url:  'http://ec2-46-51-232-200.ap-northeast-1.compute.amazonaws.com/2013/madorin/'
+
+!ruby/sym development:
+  <<: *common
+
+!ruby/sym test:
+  <<: *common
+
+!ruby/sym product:
+  <<: *common
