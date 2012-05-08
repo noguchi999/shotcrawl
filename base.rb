@@ -23,24 +23,20 @@ module Shotcrawl
       
       sc_links = Shotcrawl::Links.new(@browser.links)
       sc_links.each do |sc_link|
-        $logger.debug "Links: #{sc_link.href} : #{sc_link.text}"
+        $logger.debug "Links: #{sc_link.href} : #{sc_link.text} : #{sc_link.text.encoding}"
         sc_link.click
-        sc_link.browser.back
-      end
-      
-=begin
-      @browser.links.each do |link|
-        if link.visible?
-          puts "Links: #{link.href} : #{link.text}"
-          link.click
-          puts "#{@browser.title} : #{@browser.url}"
-          @browser.back if @browser.url != current_url
+        begin
+          @browser.goto current_url
+        rescue Selenium::WebDriver::Error::UnhandledAlertError
+          @browser.driver.switch_to.alert.dismiss
+          @browser.goto current_url
         end
       end
-=end
 
       @browser.buttons.each do |button|
         $logger.debug "Buttons: #{button.id} : #{button.name} : #{button.type} : #{button.value}"
+        
+        @browser.goto current_url
       end
       
       @browser.select_lists.each do |select|
@@ -64,9 +60,9 @@ module Shotcrawl
     def initialize(links)
       @links = []
       
-      links.each do |link|
+      links.each_with_index do |link, index|
         if link.visible? && (link.href != link.browser.url)
-          @links << Shotcrawl::Link.new(link)
+          @links << Shotcrawl::Link.new(link, index)
         end
       end
     end
@@ -81,14 +77,15 @@ module Shotcrawl
   class Link
     attr_reader :href, :text, :browser
     
-    def initialize(link)
+    def initialize(link, index)
       @browser = link.browser
       @href = link.href
       @text = link.text
+      @index = index
     end
     
     def click
-      @browser.link(href: /#{Regexp.escape(@href)}/).click
+      @browser.link(href: /#{Regexp.escape(@href)}/, text: @text).click
     end
   end
   
