@@ -1,3 +1,18 @@
+require 'active_support/core_ext'
+
+#テストが失敗した後に、テスト再実行まで300秒待機するためのモンキーパッチ.
+class Autotest
+  def get_to_green_with_get_to_green_wait
+    begin
+      run_tests
+      wait_for_changes unless all_good
+      Kernel.sleep 300
+    end until all_good
+  end
+  
+  alias_method_chain :get_to_green, :get_to_green_wait 
+end
+
 require 'autotest/growl'
 
 Autotest::Growl::image_dir = File.join(ENV['HOME'], 'Pictures/growl/autotest_image')
