@@ -3,71 +3,91 @@ require 'watir-webdriver'
 require 'watir-webdriver/extensions/alerts'
 require 'active_support/core_ext'
 require 'yaml'
-require File.expand_path('lib/weblinks/weblinks')
+#require File.expand_path('lib/weblinks/weblinks')
 require 'logger'
 
 $logger = Logger.new(File.expand_path("log/#{File.basename(__FILE__, '.rb')}.log"))
 
 module Shotcrawl
   class Base
-    attr_reader :browser, :configuration
+    attr_reader :browser, :configuration, :current_uri
+    
+    JA = {
+          true:            "有効", 
+          false:           "無効",
+          autofocus?:      "オートフォーカス",
+          disabled?:       "無効化",
+          read_only?:      "読取専用",
+          required?:       "必須チェック",
+          min:             "最小値",
+          max:             "最大値",
+          length:          "要素数",
+          text:            "テキストボックス",
+          file:            "ファイルボックス",
+          :"select-one"      => "セレクトボックス(one)",
+          :"select-multiple" => "セレクトボックス(multi)",
+          button:          "ボタン",
+          submit:          "サブミット"
+         }
     
     def initialize(options={})
       opts = {config_file: "#{File.expand_path('config/configuration.yml')}", env: :development}.merge(options.symbolize_keys)
       
       @configuration ||= YAML.load_file(opts[:config_file])[opts[:env].to_sym]
       @browser = Watir::Browser.new @configuration[:driver], @configuration[:options]
+      @current_uri = URI.parse(@configuration[:url])
     end
     
-    def analyze(url)
-      @browser.goto url
-      current_url = @browser.url
-      
-      $logger.debug @browser.text
-      
-      @browser.driver.save_screenshot("images/test.png")
+    def scenario_write(url)
+      goto url
+      screenshot "images/#{path_to_filename(current_uri)}.png"
       
       sc_links = Shotcrawl::Links.new(@browser.links)
-      sc_links.each do |sc_link|
-        $logger.debug "Links: #{sc_link.href} : #{sc_link.text} : #{sc_link.image_src}"
+      $logger.info "現在のページは、 Title: #{@browser.title}, Url: #{@browser.url} です."
+      sc_links.each_with_index do |sc_link, index|
+        link_no = (index + 1).to_s.rjust(3, '0')
+        
+        $logger.info "\t#{link_no}.リンク hrel: #{sc_link.href}, リンクテキスト: #{sc_link.text}, リンク画像: #{sc_link.image_src} が存在します."
+        $logger.info "\t\t#{link_no}.リンクをクリックします."
         sc_link.click
         begin
-          @browser.goto current_url
-        rescue Selenium::WebDriver::Error::UnhandledAlertError
-          @browser.driver.switch_to.alert.dismiss
-          @browser.goto current_url
-        end
-      end
+          if sc_link.target == "_blank"
+            goto sc_link.href
+            $logger.info "\t\t\tTitle: #{@browser.title}, Url: #{@browser.url} が表示されます."
+            screenshot "images/#{path_to_filename(current_uri)}_link_to_#{path_to_filename(@browser.url)}.png"
+            goto current_uri
+          else
+            $logger.info "\t\t\tTitle: #{@browser.title}, Url: #{@browser.url} に遷移します."
+            screenshot "images/#{path_to_filename(current_uri)}_link_to_#{path_to_filename(@browser.url)}.png"
+          end
 
-      sc_buttons = Shotcrawl::Buttons.new(@browser.buttons)
-      sc_buttons.each do |sc_button|
-        $logger.debug "Buttons: #{sc_button.id} : #{sc_button.name} : #{sc_button.type} : #{sc_button.value}"
-        sc_button.click
-        begin
-          @browser.goto current_url
+          goto current_uri
         rescue Selenium::WebDriver::Error::UnhandledAlertError
           @browser.driver.switch_to.alert.dismiss
-          @browser.goto current_url
+          retry
         end
       end
       
-      sc_select_lists = Shotcrawl::SelectLists.new(@browser.select_lists)
-      sc_select_lists.each do |sc_select_list|
-        sc_select_list.options.each do |option|
-          $logger.debug "SelectList: #{option.id} : #{option.name} : #{option.value}"
+      sc_forms = Shotcrawl::Forms.new(@browser.forms)
+      sc_forms.each_with_index do |sc_form, index|
+        form_no = (index + 1).to_s.rjust(3, '0')
+        $logger.info "\t#{form_no}.フォーム Id: #{sc_form.id}, Name: #{sc_form.name}, Action: #{sc_form.action} が存在します."
+        sc_form.text_fields.each_with_index do |sc_text_field, index|
+          text_no = (index + 1).to_s.rjust(3, '0')
+          analyzer sc_text_field, text_no
         end
-      end
-      
-      sc_text_fields = Shotcrawl::TextFields.new(@browser.text_fields)
-      sc_text_fields.each do |sc_text_field|
-        sc_text_field.value = "piyopiyo"
-        $logger.debug "TextField: #{sc_text_field.id} : #{sc_text_field.name} : #{sc_text_field.type} : #{sc_text_field.placeholder} : #{sc_text_field.value}"
-      end
-      
-      sc_textareas = Shotcrawl::Textareas.new(@browser.textareas)
-      sc_textareas.each do |sc_textarea|
-        sc_textarea.value = "fugafuga"
-        $logger.debug "TextArea: #{sc_textarea.id} : #{sc_textarea.name} : #{sc_textarea.type} : #{sc_textarea.placeholder} : #{sc_textarea.value}"
+        sc_form.file_fields.each_with_index do |sc_file_field, index|
+          file_no = (index + 1).to_s.rjust(3, '0')
+          analyzer sc_file_field, file_no
+        end
+        sc_form.select_lists.each_with_index do |sc_select_list, index|
+          select_no = (index + 1).to_s.rjust(3, '0')
+          analyzer sc_select_list, select_no
+        end
+        sc_form.buttons.each_with_index do |sc_button, index|
+          button_no = (index + 1).to_s.rjust(3, '0')
+          analyzer sc_button, button_no
+        end
       end
       
       @browser.radios.each do |radio|
@@ -80,6 +100,86 @@ module Shotcrawl
         $logger.debug "TextArea: #{sc_file_field.id} : #{sc_file_field.name} : #{sc_file_field.type} : #{sc_file_field.placeholder} : #{sc_file_field.value}"
       end
     end
+    
+    def run(scenario)
+    end
+    
+    private
+      def goto(url)
+        browser.goto url.to_s
+      end
+    
+      def screenshot(path)
+        return nil if URI.parse(browser.url).host != current_uri.host
+        
+        begin
+          browser.driver.save_screenshot(path)
+        rescue Timeout::Error => e
+          $logger.error e
+        end
+      end
+      
+      def path_to_filename(url)
+        URI.parse(url.to_s).path.gsub(/\//, "_").gsub(/^_|_$/, "")
+      end
+      
+      def analyzer(element, no)
+        case element.type
+          when "text"
+            $logger.info "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value}, Placeholder: #{element.placeholder} が存在します."
+            $logger.info "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :read_only?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :required?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :min)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :max)}"
+            
+          when "file"
+            $logger.info "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value}, Placeholder: #{element.placeholder} が存在します."
+            $logger.info "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :read_only?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :required?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :min)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :max)}"
+          
+          when "select-one", "select-multiple"
+            $logger.info "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name} が存在します."
+            $logger.info "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :required?)}"
+            $logger.info "\t\t\t#{no}.#{messanger(element, :length)}"
+            
+          when "button", "submit"
+          
+          else
+            raise ArgumentError, "invalid argument: #{element.type}"
+        end
+      end
+      
+      def tester(element, no)
+        case element.type
+          when "text"
+          when "file"          
+          when "select-one"
+          when "select-multiple"
+          when "button"
+          when "submit"
+        end
+      end
+      
+      def messanger(obj, method_name)
+        result = obj.__send__(method_name)
+        result =  case result
+                    when true, false
+                      JA[result.to_s.to_sym]
+                    when nil, "", [], {}
+                      "未設定"
+                    else
+                      result
+                  end
+        "#{JA[obj.type.to_sym]}の#{JA[method_name.to_sym]}は、#{result}です."
+      end
   end
   
   class Links
@@ -103,13 +203,14 @@ module Shotcrawl
   end
   
   class Link
-    attr_reader :href, :text, :image_src, :browser
+    attr_reader :href, :text, :image_src, :target, :browser
     
     def initialize(link, index)
       @browser   = link.browser
       @href      = link.href
       @text      = link.text
       @image_src = link.image.src if link.image.exists?
+      @target    = link.target
       @index = index
     end
     
@@ -123,6 +224,44 @@ module Shotcrawl
       else
         raise "Button not found. href: #{@href} , Text: #{@text}, Index: #{@index}"
       end
+    end
+  end
+  
+  class Forms
+    include Enumerable
+    
+    def initialize(forms)
+      @forms = []
+      
+      forms.each_with_index do |form, index|
+        if form.visible?
+          @forms << Shotcrawl::Form.new(form, index)
+        end
+      end
+    end
+    
+    def each
+      @forms.each do |form|
+        yield form
+      end
+    end
+  end
+  
+  class Form
+    attr_reader :id, :name, :action, :buttons, :select_lists, :text_fields, :radios, :file_fields, :textareas, :index, :browser
+    
+    def initialize(form, index)
+      @browser      = form.browser
+      @id           = form.id
+      @name         = form.name
+      @action       = form.action
+      @buttons      = Shotcrawl::Buttons.new form.buttons
+      @select_lists = Shotcrawl::SelectLists.new form.select_lists
+      @text_fields  = Shotcrawl::TextFields.new form.text_fields
+      @radios       = Shotcrawl::Radios.new form.radios
+      @file_fields  = Shotcrawl::FileFields.new form.file_fields
+      @textareas    = Shotcrawl::Textareas.new form.textareas
+      @index        = index
     end
   end
   
@@ -225,7 +364,7 @@ module Shotcrawl
   end
   
   class SelectList
-    attr_reader :id, :name, :type, :value, :options, :selected_options, :index, :browser
+    attr_reader :id, :name, :type, :value, :options, :selected_options, :index, :browser, :length
     
     def initialize(select_list, index)
       @browser = select_list.browser
@@ -235,7 +374,23 @@ module Shotcrawl
       @value   = select_list.value
       @options = Shotcrawl::Options.new(select_list)
       @selected_options = select_list.selected_options
-      @index = index
+      @index      = index
+      @autofocus  = select_list.autofocus?
+      @disabled   = select_list.disabled?
+      @required   = select_list.required?
+      @length     = select_list.length
+    end
+    
+    def autofocus?
+      @autofocus
+    end
+    
+    def disabled?
+      @disabled
+    end
+    
+    def required?
+      @required
     end
     
     def option(selector={})
@@ -334,7 +489,7 @@ module Shotcrawl
   end
   
   class TextField
-    attr_reader :id, :name, :type, :value, :placeholder, :index, :browser
+    attr_reader :id, :name, :type, :value, :placeholder, :index, :browser, :min, :max
     
     def initialize(text_field, index)
       @browser = text_field.browser
@@ -343,7 +498,29 @@ module Shotcrawl
       @type    = text_field.type
       @value   = text_field.value
       @placeholder = text_field.placeholder
-      @index   = index
+      @index      = index
+      @autofocus  = text_field.autofocus?
+      @disabled   = text_field.disabled?
+      @read_only  = text_field.read_only?
+      @required   = text_field.required?
+      @min        = text_field.min
+      @max        = text_field.max
+    end
+    
+    def autofocus?
+      @autofocus
+    end
+    
+    def disabled?
+      @disabled
+    end
+    
+    def read_only?
+      @read_only
+    end 
+    
+    def required?
+      @required
     end
     
     def value=(arg)
@@ -397,7 +574,7 @@ module Shotcrawl
   end
   
   class FileField
-    attr_reader :id, :name, :type, :value, :placeholder, :index, :browser
+    attr_reader :id, :name, :type, :value, :placeholder, :index, :browser, :min, :max
     
     def initialize(file_field, index)
       @browser = file_field.browser
@@ -406,7 +583,29 @@ module Shotcrawl
       @type    = file_field.type
       @value   = file_field.value
       @placeholder = file_field.placeholder
-      @index   = index
+      @index      = index
+      @autofocus  = file_field.autofocus?
+      @disabled   = file_field.disabled?
+      @read_only  = file_field.read_only?
+      @required   = file_field.required?
+      @min        = file_field.min
+      @max        = file_field.max
+    end
+    
+    def autofocus?
+      @autofocus
+    end
+    
+    def disabled?
+      @disabled
+    end
+    
+    def read_only?
+      @read_only
+    end 
+    
+    def required?
+      @required
     end
     
     def set(arg)
