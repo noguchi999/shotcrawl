@@ -3,14 +3,13 @@ require 'watir-webdriver'
 require 'watir-webdriver/extensions/alerts'
 require 'active_support/core_ext'
 require 'yaml'
-#require File.expand_path('lib/weblinks/weblinks')
 require 'logger'
 
 $logger = Logger.new(File.expand_path("log/#{File.basename(__FILE__, '.rb')}.log"))
 
 module Shotcrawl
   class Base
-    attr_reader :browser, :configuration, :current_uri
+    attr_reader :browser, :current_uri
     
     JA = {
           true:            "有効", 
@@ -24,41 +23,54 @@ module Shotcrawl
           length:          "要素数",
           text:            "テキストボックス",
           file:            "ファイルボックス",
-          :"select-one"      => "セレクトボックス(one)",
-          :"select-multiple" => "セレクトボックス(multi)",
+          :"select-one"      => "セレクトリスト(one)",
+          :"select-multiple" => "セレクトリスト(multi)",
+          radio:           "ラジオボタン",
+          checkbox:        "チェックボックス",
           button:          "ボタン",
           submit:          "サブミット"
          }
     
     def initialize(options={})
       opts = {config_file: "#{File.expand_path('config/configuration.yml')}", env: :development}.merge(options.symbolize_keys)
+      @scenarios = []
       
-      @configuration ||= YAML.load_file(opts[:config_file])[opts[:env].to_sym]
-      @browser = Watir::Browser.new @configuration[:driver], @configuration[:options]
-      @current_uri = URI.parse(@configuration[:url])
+      if opts[:online]
+        @browser = Watir::Browser.new opts[:driver], opts[:options]
+        @current_uri = URI.parse(opts[:url])
+      else
+        @configuration ||= YAML.load_file(opts[:config_file])[opts[:env].to_sym]
+        @browser = Watir::Browser.new @configuration[:driver], @configuration[:options]
+        @current_uri = URI.parse(@configuration[:url])
+      end
     end
     
     def scenario_write(url)
       goto url
-      screenshot "images/#{path_to_filename(current_uri)}.png"
+      screenshot "public/images/#{path_to_filename(current_uri)}.png"
+      
+      @scenarios << "現在のページは、 Title: #{@browser.title}, Url: #{@browser.url} です."
+      @scenarios << "\tテキスト情報を出力します."
+      @browser.text.split("\n").each do |text|
+        @scenarios << "\t\t#{text}"
+      end
       
       sc_links = Shotcrawl::Links.new(@browser.links)
-      $logger.info "現在のページは、 Title: #{@browser.title}, Url: #{@browser.url} です."
       sc_links.each_with_index do |sc_link, index|
         link_no = (index + 1).to_s.rjust(3, '0')
         
-        $logger.info "\t#{link_no}.リンク hrel: #{sc_link.href}, リンクテキスト: #{sc_link.text}, リンク画像: #{sc_link.image_src} が存在します."
-        $logger.info "\t\t#{link_no}.リンクをクリックします."
+        @scenarios << "\t#{link_no}.リンク hrel: #{sc_link.href}, リンクテキスト: #{sc_link.text}, リンク画像: #{sc_link.image_src} が存在します."
+        @scenarios << "\t\t#{link_no}.リンクをクリックします."
         sc_link.click
         begin
           if sc_link.target == "_blank"
             goto sc_link.href
-            $logger.info "\t\t\tTitle: #{@browser.title}, Url: #{@browser.url} が表示されます."
-            screenshot "images/#{path_to_filename(current_uri)}_link_to_#{path_to_filename(@browser.url)}.png"
+            @scenarios << "\t\t\tTitle: #{@browser.title}, Url: #{@browser.url} が表示されます."
+            screenshot "public/images/#{path_to_filename(current_uri)}_link_to_#{path_to_filename(@browser.url)}.png"
             goto current_uri
           else
-            $logger.info "\t\t\tTitle: #{@browser.title}, Url: #{@browser.url} に遷移します."
-            screenshot "images/#{path_to_filename(current_uri)}_link_to_#{path_to_filename(@browser.url)}.png"
+            @scenarios << "\t\t\tTitle: #{@browser.title}, Url: #{@browser.url} に遷移します."
+            screenshot "public/images/#{path_to_filename(current_uri)}_link_to_#{path_to_filename(@browser.url)}.png"
           end
 
           goto current_uri
@@ -71,7 +83,7 @@ module Shotcrawl
       sc_forms = Shotcrawl::Forms.new(@browser.forms)
       sc_forms.each_with_index do |sc_form, index|
         form_no = (index + 1).to_s.rjust(3, '0')
-        $logger.info "\t#{form_no}.フォーム Id: #{sc_form.id}, Name: #{sc_form.name}, Action: #{sc_form.action} が存在します."
+        @scenarios << "\t#{form_no}.フォーム Id: #{sc_form.id}, Name: #{sc_form.name}, Action: #{sc_form.action} が存在します."
         sc_form.text_fields.each_with_index do |sc_text_field, index|
           text_no = (index + 1).to_s.rjust(3, '0')
           analyzer sc_text_field, text_no
@@ -84,24 +96,32 @@ module Shotcrawl
           select_no = (index + 1).to_s.rjust(3, '0')
           analyzer sc_select_list, select_no
         end
+        sc_form.radios.each_with_index do |sc_radio, index|
+          radio_no = (index + 1).to_s.rjust(3, '0')
+          analyzer sc_radio, radio_no
+        end
+        sc_form.checkboxes.each_with_index do |sc_checkbox, index|
+          checkbox_no = (index + 1).to_s.rjust(3, '0')
+          analyzer sc_checkbox, checkbox_no
+        end
         sc_form.buttons.each_with_index do |sc_button, index|
           button_no = (index + 1).to_s.rjust(3, '0')
           analyzer sc_button, button_no
         end
       end
       
-      @browser.radios.each do |radio|
-        $logger.debug "Radio: #{radio}"
-      end
-      
-      sc_file_fields = Shotcrawl::FileFields.new(@browser.file_fields)
-      sc_file_fields.each do |sc_file_field|
-        sc_file_field.set "C:/my_work/野口修_週間報告書_2012年度.xls"
-        $logger.debug "TextArea: #{sc_file_field.id} : #{sc_file_field.name} : #{sc_file_field.type} : #{sc_file_field.placeholder} : #{sc_file_field.value}"
-      end
+      @scenarios << "Title: #{@browser.title}, Url: #{@browser.url} のシナリオは以上です."
     end
     
     def run(scenario)
+      
+      scenario.each do |test_case|
+        if test_case[:url]
+          @borwser.goto test_case[:url]
+          tester()
+        end
+        
+      end
     end
     
     private
@@ -126,32 +146,42 @@ module Shotcrawl
       def analyzer(element, no)
         case element.type
           when "text"
-            $logger.info "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value}, Placeholder: #{element.placeholder} が存在します."
-            $logger.info "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :disabled?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :read_only?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :required?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :min)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :max)}"
+            @scenarios << "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value}, Placeholder: #{element.placeholder} が存在します."
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :read_only?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :required?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :min)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :max)}"
             
           when "file"
-            $logger.info "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value}, Placeholder: #{element.placeholder} が存在します."
-            $logger.info "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :disabled?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :read_only?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :required?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :min)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :max)}"
+            @scenarios << "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value}, Placeholder: #{element.placeholder} が存在します."
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :read_only?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :required?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :min)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :max)}"
           
           when "select-one", "select-multiple"
-            $logger.info "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name} が存在します."
-            $logger.info "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :disabled?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :required?)}"
-            $logger.info "\t\t\t#{no}.#{messanger(element, :length)}"
-            
-          when "button", "submit"
+            @scenarios << "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name} が存在します."
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :autofocus?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :required?)}"
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :length)}"
           
+          when "radio"
+            @scenarios << "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value} が存在します."
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :disabled?)}"            
+          
+          when "checkbox"
+            @scenarios << "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Value: #{element.value} が存在します."
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :disabled?)}"            
+          
+          when "button", "submit"
+            @scenarios << "\t\t#{no}.#{JA[element.type.to_sym]} Id: #{element.id}, Name: #{element.name}, Type: #{element.type}, Value: #{element.value} が存在します."
+            @scenarios << "\t\t\t#{no}.#{messanger(element, :disabled?)}"
+
           else
             raise ArgumentError, "invalid argument: #{element.type}"
         end
@@ -163,6 +193,8 @@ module Shotcrawl
           when "file"          
           when "select-one"
           when "select-multiple"
+          when "radio"
+          when "checkbox"
           when "button"
           when "submit"
         end
@@ -248,7 +280,7 @@ module Shotcrawl
   end
   
   class Form
-    attr_reader :id, :name, :action, :buttons, :select_lists, :text_fields, :radios, :file_fields, :textareas, :index, :browser
+    attr_reader :id, :name, :action, :buttons, :select_lists, :text_fields, :radios, :checkboxes, :file_fields, :textareas, :index, :browser
     
     def initialize(form, index)
       @browser      = form.browser
@@ -259,6 +291,7 @@ module Shotcrawl
       @select_lists = Shotcrawl::SelectLists.new form.select_lists
       @text_fields  = Shotcrawl::TextFields.new form.text_fields
       @radios       = Shotcrawl::Radios.new form.radios
+      @checkboxes   = Shotcrawl::Checkboxes.new form.checkboxes
       @file_fields  = Shotcrawl::FileFields.new form.file_fields
       @textareas    = Shotcrawl::Textareas.new form.textareas
       @index        = index
@@ -289,12 +322,17 @@ module Shotcrawl
     attr_reader :id, :type, :name, :value, :browser
     
     def initialize(button, index)
-      @browser = button.browser
-      @id = button.id
-      @type = button.type
-      @name = button.name
-      @value = button.value
-      @index = index
+      @browser  = button.browser
+      @id       = button.id
+      @type     = button.type
+      @name     = button.name
+      @value    = button.value
+      @index    = index
+      @disabled = button.disabled?
+    end
+    
+    def disabled?
+      @disabled
     end
     
     def click
@@ -553,6 +591,75 @@ module Shotcrawl
   end
   
   class Radio
+    attr_reader :id, :type, :name, :value, :browser
+    
+    def initialize(radio, index)
+      @browser  = radio.browser
+      @id       = radio.id
+      @type     = radio.type
+      @name     = radio.name
+      @value    = radio.value
+      @index    = index
+      @disabled = radio.disabled?
+    end
+    
+    def disabled?
+      @disabled
+    end
+    
+    def click
+      if @browser.radios[@index].exists?
+        @browser.radios[@index].click
+        
+      else
+        raise "Radio not found. Id: #{@id} , Name: #{@name} , Value: #{@value}, Index: #{@index}"
+      end
+    end
+  end
+  
+  class Checkboxes
+    include Enumerable
+    
+    def initialize(checkboxes)
+      @checkboxes = []
+      
+      checkboxes.each_with_index do |checkbox, index|
+        @checkboxes << Shotcrawl::Checkbox.new(checkbox, index)
+      end
+    end
+    
+    def each
+      @checkboxes.each do |checkbox|
+        yield checkbox
+      end
+    end
+  end
+  
+  class Checkbox
+    attr_reader :id, :type, :name, :value, :browser
+    
+    def initialize(checkbox, index)
+      @browser  = checkbox.browser
+      @id       = checkbox.id
+      @type     = checkbox.type
+      @name     = checkbox.name
+      @value    = checkbox.value
+      @index    = index
+      @disabled = checkbox.disabled?
+    end
+    
+    def disabled?
+      @disabled
+    end
+    
+    def click
+      if @browser.checkboxes[@index].exists?
+        @browser.checkboxes[@index].click
+        
+      else
+        raise "Checkbox not found. Id: #{@id} , Name: #{@name} , Value: #{@value}, Index: #{@index}"
+      end
+    end
   end
   
   class FileFields
