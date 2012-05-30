@@ -1,1 +1,0 @@
-require File.expand_path("../scenario", __FILE__)
