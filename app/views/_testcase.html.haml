@@ -1,0 +1,29 @@
+%span#scenario_top
+  現在のページは、 Title: #{@browser.title}, Url: #{@browser.url} です.
+  %br
+  %strong
+    テキスト情報を出力します.
+  - @browser.text.split("\n").each do |text|
+    =text
+    %br
+  
+  %table.table-condensed.table-bordered.table-striped
+    %thead
+      %tr
+        %th Target
+        %th Action
+        %th Expected
+        %th Result
+        %th Status
+    %tbody
+      - @testcases.each do |testcase|
+        %tr
+          == %td#test_no_#{testcase.no}.test_no
+            = testcase.no
+          == %td#target_#{testcase.no}.center
+            = testcase.target
+          == %td#action_#{testcase.no}
+            = testcase.action
+
+:coffeescript
+  $ ->

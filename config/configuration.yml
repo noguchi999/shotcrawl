@@ -1,19 +1,26 @@
 # coding: utf-8
 !ruby/sym common: &common
   !ruby/sym url:     'http://ec2-46-51-232-200.ap-northeast-1.compute.amazonaws.com/2013/madorin/'
+    
+!ruby/sym development:
+  <<: *common
+  !ruby/sym url:     'http://ec2-46-51-232-200.ap-northeast-1.compute.amazonaws.com/2013/madorin/'
   !ruby/sym driver:  :chrome
   !ruby/sym options:
     !ruby/sym switches:
       - '--ignore-certificate-errors'
       - '--disable-popup-blocking'
       - '--disable-translate'
-    
-!ruby/sym development:
-  <<: *common
 
 !ruby/sym test:
   <<: *common
   !ruby/sym url:     'http://localhost:3000/graphs/'
+  !ruby/sym driver:  :chrome
+  !ruby/sym options:
+    !ruby/sym switches:
+      - '--ignore-certificate-errors'
+      - '--disable-popup-blocking'
+      - '--disable-translate'
 
 !ruby/sym product:
   <<: *common
