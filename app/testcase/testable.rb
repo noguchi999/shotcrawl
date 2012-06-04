@@ -2,9 +2,10 @@
 module Shotcrawl
   # Shotcrawl::Testableをincludeするクラスは、Watir::Browserインスタンスを返却するbrowserメソッドを定義する必要がある.
   module Testable
+    extend ActiveSupport::Concern
     
-    def self.included(klass)
-      klass.__send__ :include, eval(%Q|Shotcrawl::Testcase::#{klass.name.split("::").pop}|)
+    included do
+      include "Shotcrawl::Testcase::#{self.name.demodulize}".constantize
     end
   end
 end

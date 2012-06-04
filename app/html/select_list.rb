@@ -3,11 +3,12 @@ module Shotcrawl
   class SelectLists
     include Enumerable
     
-    def initialize(select_lists)
+    def initialize(select_lists, options={})
+      opts = {current: nil, callback_uri: nil}.merge(options).symbolize_keys
       @select_lists = []
       
       select_lists.each_with_index do |select_list, index|
-        @select_lists << Shotcrawl::SelectList.new(select_list, index)
+        @select_lists << Shotcrawl::SelectList.new(select_list, index: index, current: opts[:current], callback_uri: opts[:callback_uri])
       end
     end
     
@@ -19,23 +20,28 @@ module Shotcrawl
   end
   
   class SelectList
-    attr_reader :id, :name, :type, :value, :options, :selected_options, :index, :browser, :length
+    attr_reader :id, :name, :type, :value, :options, :selected_options, :index, :length, :browser, :callback_uri, :current
     
     include Shotcrawl::Testable
     
-    def initialize(select_list, index)
+    def initialize(select_list, options={})
+      opts = {index: 0, current: select_list.browser}.merge(options).symbolize_keys
+    
       @browser = select_list.browser
       @id      = select_list.id
       @name    = select_list.name
       @type    = select_list.type
       @value   = select_list.value
-      @options = Shotcrawl::Options.new(select_list)
+      @options = Shotcrawl::Options.new(select_list, current: opts[:current], callback_uri: opts[:callback_uri])
       @selected_options = select_list.selected_options
-      @index      = index
       @autofocus  = select_list.autofocus?
       @disabled   = select_list.disabled?
       @required   = select_list.required?
       @length     = select_list.length
+      
+      @current      = opts[:current]
+      @callback_uri = opts[:callback_uri]
+      @index        = opts[:index]
     end
     
     def autofocus?
@@ -49,27 +55,17 @@ module Shotcrawl
     def required?
       @required
     end
-    
-    def option(selector={})
-      selector = selector.symbolize_keys
-    
-      if @browser.select_list.options[@index].exists?
-        @browser.select_list.options[@index].select
-        
-      else
-        raise "Option not found. #{selector.to_s}"
-      end
-    end
   end
   
   class Options
     include Enumerable
     
-    def initialize(select_list)
+    def initialize(select_list, options={})
+      opts = {current: nil, callback_uri: nil}.merge(options).symbolize_keys
       @optoins = []
       
       select_list.options.each_with_index do |option, index|
-        @optoins << Shotcrawl::Option.new(option, index, select_list)
+        @optoins << Shotcrawl::Option.new(option, select_list: select_list, index: index, current: opts[:current], callback_uri: opts[:callback_uri])
       end
     end
     
@@ -81,20 +77,23 @@ module Shotcrawl
   end
   
   class Option
-    attr_reader :id, :name, :value, :index, :browser
+    attr_reader :id, :name, :value, :type, :index, :browser
     
     include Shotcrawl::Testable
     
-    def initialize(option, index, select_list)
+    def initialize(option, options={})
+      opts = {index: 0, current: option.browser}.merge(options).symbolize_keys
+      
       @browser = option.browser
       @id      = option.id
       @label   = option.label
       @value   = option.value
-      @index   = index
-      @select_list_id    = select_list.id
-      @select_list_name  = select_list.name
-      @select_list_type  = select_list.type
-      @select_list_value = select_list.value
+      
+      @index             = opts[:index]
+      @select_list_id    = opts[:select_list].id
+      @select_list_name  = opts[:select_list].name
+      @select_list_type  = opts[:select_list].type
+      @select_list_value = opts[:select_list].value
     end
     
     def select
@@ -114,11 +113,11 @@ module Shotcrawl
       if select_list.option(id: @id).exists?
         select_list.option(id: @id).select
         
-      elsif select_list.option(label: @label, type: @type).exists?
-        select_list.option(label: @label, type: @type).select
+      elsif select_list.option(label: @label).exists?
+        select_list.option(label: @label,).select
         
-      elsif select_list.option(value: @value, type: @type).exists?
-        select_list.option(value: @value, type: @type).select
+      elsif select_list.option(value: @value).exists?
+        select_list.option(value: @value).select
         
       elsif select_list.options[@index].exists?
         select_list.options[@index].select

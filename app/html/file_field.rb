@@ -3,11 +3,12 @@ module Shotcrawl
   class FileFields
     include Enumerable
     
-    def initialize(file_fields)
+    def initialize(file_fields, options={})
+      opts = {current: nil, callback_uri: nil}.merge(options).symbolize_keys
       @file_fields = []
       
       file_fields.each_with_index do |file_field, index|
-        @file_fields << Shotcrawl::FileField.new(file_field, index)
+        @file_fields << Shotcrawl::FileField.new(file_field, index: index, current: opts[:current], callback_uri: opts[:callback_uri])
       end
     end
     
@@ -19,24 +20,29 @@ module Shotcrawl
   end
   
   class FileField
-    attr_reader :id, :name, :type, :value, :placeholder, :index, :browser, :min, :max
+    attr_reader :id, :name, :type, :value, :placeholder, :index, :browser, :min, :max, :callback_uri, :current
     
     include Shotcrawl::Testable
     
-    def initialize(file_field, index)
+    def initialize(file_field, options={})
+      opts = {index: 0, current: Proc.new {file_field.browser}}.merge(options).symbolize_keys
+      
       @browser = file_field.browser
       @id      = file_field.id
       @name    = file_field.name
       @type    = file_field.type
       @value   = file_field.value
       @placeholder = file_field.placeholder
-      @index      = index
       @autofocus  = file_field.autofocus?
       @disabled   = file_field.disabled?
       @read_only  = file_field.read_only?
       @required   = file_field.required?
       @min        = file_field.min
       @max        = file_field.max
+      
+      @current      = opts[:current]
+      @callback_uri = opts[:callback_uri]
+      @index        = opts[:index]
     end
     
     def autofocus?
@@ -56,8 +62,9 @@ module Shotcrawl
     end
     
     def set(arg)
-      if @browser.file_fields[@index].exists?
-        @browser.file_fields[@index].set arg
+      element = @current.call
+      if element.file_fields[@index].exists?
+        element.file_fields[@index].set arg
         @value = arg
       
       else

@@ -6,7 +6,7 @@ require 'yaml'
 require 'ostruct'
 require 'logger'
 
-require File.expand_path("../app/util/nil_class", __FILE__)
+require File.expand_path("../app/util", __FILE__)
 require File.expand_path("../app/lang/lang", __FILE__)
 require File.expand_path("../app/testcase", __FILE__)
 require File.expand_path("../app/html", __FILE__)

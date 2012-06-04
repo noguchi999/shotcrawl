@@ -23,7 +23,7 @@ module Shotcrawl
                   result = Shotcrawl::Testcase::Result.new(status: :error, message: %Q|Title: #{browser.title}, Url: #{browser.url}|)
                 end
                 
-                self.browser.goto self.current_uri.to_s
+                self.browser.goto self.callback_uri.to_s
                 
               rescue Selenium::WebDriver::Error::UnhandledAlertError
                 browser.driver.switch_to.alert.dismiss
@@ -44,7 +44,7 @@ module Shotcrawl
                 expected.url    = browser.url
                 expected.status = Status.new(:normal)
                 
-                self.browser.goto self.current_uri.to_s
+                self.browser.goto self.callback_uri.to_s
                 
               rescue Selenium::WebDriver::Error::UnhandledAlertError
                 browser.driver.switch_to.alert.dismiss

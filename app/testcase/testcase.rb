@@ -3,15 +3,17 @@ module Shotcrawl
   module Testcase
     class TestCase
       include Enumerable
+      attr_reader :actions
       
       def initialize(actions)
         @actions  = actions
+        @expected = Expected.new
       end
       
       def do
         results = []
         @actions.each do |action|
-          results << action.do
+          results << action.do(@expected)
         end
         results
       end
@@ -24,19 +26,19 @@ module Shotcrawl
     end
     
     class Action
-      attr_reader :index, :name, :action, :expected
+      attr_reader :id, :index, :name, :action
       
       def initialize(options={})
         opts = options.symbolize_keys
         
-        @index    =  opts[:index]
-        @name     =  opts[:name]
-        @action   =  opts[:action]
-        @expected =  opts[:expected]
+        @id       = opts[:id]
+        @index    = opts[:index]
+        @name     = opts[:name]
+        @action   = opts[:action]
       end
       
-      def do
-        action.call expected.call
+      def do(expected)
+        action.call expected
       end
     end
   end

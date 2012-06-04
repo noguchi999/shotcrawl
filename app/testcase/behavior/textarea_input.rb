@@ -16,18 +16,18 @@ module Shotcrawl
           def build_textarea_input_action
             Proc.new do |expected|
               unless self.disabled? && self.read_only?
-                self.value = create_text(self.min, self.max)
+                input_text = fake_text_value(min: self.min, max: self.max)
+                self.value = input_text
               end
               
-              Shotcrawl::Testcase::Result.new(status: :success, message: "")
+              if self.value == input_text
+                result = Result.new(status: :success, message: "")
+              else
+                result = Result.new(status: :error, message: %Q|Id: #{self.id}, Value: #{self.value}|)
+              end
+              
+              result
             end
-          end
-          
-          def create_text(min, max)
-            min ||= 0
-            max ||= 1024
-            
-            (("a".."z").to_a + ("A".."Z").to_a + (0..9).to_a + ("あ".."ん").to_a + ("!".."/").to_a).shuffle[min..max].join
           end
           
           def build_textarea_input_expected

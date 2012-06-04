@@ -5,8 +5,9 @@ require 'watir-webdriver/extensions/alerts'
 require 'active_support/core_ext'
 require 'yaml'
 require 'ostruct'
+require 'pp'
 
-require File.expand_path("../app/util/nil_class", __FILE__)
+require File.expand_path("../app/util", __FILE__)
 require File.expand_path("../app/testcase", __FILE__)
 require File.expand_path("../app/html", __FILE__)
 
@@ -52,46 +53,13 @@ module Shotcrawl
         end
 =end
 
-        sc_forms.each_with_index do |sc_form, index|
-          
-          sc_form.text_fields.each do |sc_text_field|
-            testcases << sc_text_field.create_testcase
-          end
-=begin
-          sc_form.file_fields.each_with_index do |sc_file_field, index|
-            file_no = (index + 1).to_s.rjust(3, '0')
-            analyzer sc_file_field, file_no
-          end
-          sc_form.select_lists.each_with_index do |sc_select_list, index|
-            select_no = (index + 1).to_s.rjust(3, '0')
-            analyzer sc_select_list, select_no
-          end
-          sc_form.radios.each_with_index do |sc_radio, index|
-            radio_no = (index + 1).to_s.rjust(3, '0')
-            analyzer sc_radio, radio_no
-          end
-          sc_form.checkboxes.each_with_index do |sc_checkbox, index|
-            checkbox_no = (index + 1).to_s.rjust(3, '0')
-            analyzer sc_checkbox, checkbox_no
-          end
-          sc_form.buttons.each_with_index do |sc_button, index|
-            button_no = (index + 1).to_s.rjust(3, '0')
-            analyzer sc_button, button_no
-          end
-        
-          sc_form.buttons.each do |sc_button|
-            testcases << sc_button.create_testcase
-          end
-=end
+        sc_forms.each do |sc_form|
+          testcases << sc_form.create_testcases
         end
       end
       
       testcases.each do |testcase|
-        testcase.each do |action|
-          puts action.expected.call.status
-          result = action.do
-          puts "#{result.status} : #{result.message}"
-        end
+        testcase.do
       end
     end
   end

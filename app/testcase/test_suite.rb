@@ -28,7 +28,7 @@ module Shotcrawl
     end
   
     class TestCases
-      attr_accessor :test_no
+      attr_reader :test_no
       
       include Enumerable
       
@@ -38,7 +38,13 @@ module Shotcrawl
       end
       
       def add(testcase)
-        @testcases.store(@test_no.next, testcase)
+        if testcase.is_a? Array
+          testcase.each do |t|
+            @testcases.store(@test_no.next, t)
+          end
+        else
+          @testcases.store(@test_no.next, testcase)
+        end
       end
       
       def <<(testcase)
